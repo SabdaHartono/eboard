@@ -47,6 +47,7 @@ def to_eboard(petak):
 #69 - move promotion to knight
 #+ 8 draw
 #+ 16 check mate
+#+ 32 
 
 #128 - ilegal move
 #129 - select new game
@@ -88,7 +89,7 @@ def capture2(data):
       idx = i + j
       piece = board.piece_at(idx)
       if piece:
-        num = turk[piece.symbol()]
+        num = vis[piece.symbol()]
       else:
         num = 0
         
