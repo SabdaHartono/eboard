@@ -8,7 +8,7 @@ book = chess.polyglot.open_reader("opening/performance.bin")
 board = chess.Board()
 print(board)
 engine = chess.engine.SimpleEngine.popen_uci("c:\Program Files (x86)\Tarrasch\Engines\stockfish_8_x64")
-pilih = {"Skill Level": 2}
+pilih = {"Skill Level": 1}
 engine.configure(pilih)
 play_game = True
 command = 1
@@ -37,36 +37,47 @@ def to_eboard(petak):
 
 #host and client command
 #0 - 63 move from, move to
-#64 - no move
-#65 - normal move
-#66 - move promotion to knight
-#67 - move promotion to bishop
-#68 - move promotion to rook
-#69 - move promotion to queen
+
+#64 in game
+#64 - no move (+0)
+#65 - normal move (+1)
+#66 - move promotion to knight (+2)
+#67 - move promotion to bishop (+3)
+#68 - move promotion to rook (+4)
+#69 - move promotion to queen (+5)
 #+ 8 draw
 #+ 16 check mate
 #+ 32 offer draw
 
 # host command
 #128 - ilegal move
+_ilegal_move = 128
 #129 - select new game
+_select_ng = 129
 #130 - start game client white
+_start_white = 130
 #131 - start game client black
+_start_black = 131
 #132 - start game from this position
-#136 transmit board status1
+_start_this_pos = 132
+#transmit board status1
+_tx_board1 = 135
 #137 -wait for status 2
-#138 transmit board status2
+_wait_board2 = 137
+#139 transmit board status2
+_tx_board2 = 139
 #140 wait_to_update
+_wait_update = 141
 
 #client_request
-#133 - request board status1
-REQ_STAT1 = 133
-#134 - request board status2
-REQ_STAT2 = 134
-#135 - ready to play game
-OK_TO_PLAY = 135
-#139 - ready to start game
-READY_TO_START = 139
+#134 - request board status1
+REQ_STAT1 = 134
+#136 - request board status2
+REQ_STAT2 = 136
+#138 - ready to play game
+OK_TO_PLAY = 138
+#137 - ready to start game
+READY_TO_START = 140
 
 
 
@@ -129,12 +140,12 @@ def capture2(data):
   data.append(254)
 
 def transmit_board_stat1():
-  data = [136]
+  data = [_tx_board1]
   capture1(data)
   ser.write(data)
 
 def transmit_board_stat2():
-  data = [138]
+  data = [_tx_board2]
   capture2(data)
   ser.write(data)
 
@@ -151,7 +162,8 @@ def do_move(move_from, move_to, promotion_to):
   try:
     promotion_to = promotion_to & 7
     #if normal move
-    if (promotion_to == 1){promotion_to = None}
+    if promotion_to == 1:
+      promotion_to = None
     jalan = board.find_move(move_from, move_to, promotion_to);
     board.push(jalan)
     if not client_white:
@@ -207,19 +219,21 @@ def eboard_handling():
     global ntransmit, max_transmit, delay, ndelay, client_white, host_white, device_err
     global client_req, client_prev_from, client_prev_to, client_from, client_to
 
+
     #print("last move = ", last_move)
     host_cmd = last_move[0]
-    select_new_game = (host_cmd == 129)
+    select_new_game = (host_cmd == _select_ng)
     in_game = (host_cmd & 64) == 64
+    #print("info, in game = ", in_game)
     client_turn = (client_white == board.turn)
+    #print("info, client turn = ", client_turn)
     host_turn = not client_turn
-    wait_to_play = (host_cmd == 130) or (host_cmd == 131) or (host_cmd == 139)
+    wait_to_play = (host_cmd == _start_white) or (host_cmd == _start_black)
     game_ovr = ((host_cmd & 72) == 72) or ((host_cmd & 80) == 80)
     #print("game over = ", game_ovr)
-    select_new_game = (host_cmd == 129)
-    board_capture = (host_cmd == 128) or (host_cmd == 132)
-    wait_stat2 = (host_cmd == 137)
-    wait_to_update = (host_cmd == 140)
+    board_capture = (host_cmd == _start_this_pos)
+    wait_stat2 = (host_cmd == _wait_board2)
+    wait_to_update = (host_cmd == _wait_update)
 
     #print("client turn = ", client_turn)
     #print("in game = ", in_game)
@@ -242,12 +256,19 @@ def eboard_handling():
         client_prev_to = data[idx+2]
         client_from = data[idx+3]
         client_to  = data[idx+4]
+        #print("request = ", client_req)
+        #print("prev from = ", client_prev_from)
+        #print("prev to = ", client_prev_to)
+        #print("from = ", client_from)
+        #print("to = ", client_to)
         tail = data[idx+5]
         if not (tail == 254):
           print("warning, data tail error, tail = ", tail)
         idx = idx + 6
         data_waiting = (num_data > idx)
-        if (in_game and client_turn): ntransmit = ntransmit - 1
+        if (in_game and client_turn):
+          ntransmit = ntransmit - 1
+
       elif delay > 0:
         #print("delay = ", delay)
         delay = delay - 1
@@ -256,6 +277,7 @@ def eboard_handling():
           device_err = True
           print("error, board do not response !")
         else:
+          #print("last move = ", last_move)
           ser.write(last_move)
           ntransmit = ntransmit + 1
           #print("info, next transmit = ", ntransmit)
@@ -281,12 +303,12 @@ def eboard_handling():
       #print("info, host command", host_cmd)
       if game_ovr:
         if client_req == READY_TO_START:
-          last_move = [129, 64, 64, 64, 64, 254]
+          last_move = [_select_ng, 64, 64, 64, 64, 254]
       elif select_new_game:
         #print("info command = ", command)
         if command == 1:
           #start game client white
-          last_move = [130, 64, 64, 64, 64, 254]
+          last_move = [_start_white, 64, 64, 64, 64, 254]
           client_white = True
           host_white = False
           board.reset()
@@ -296,7 +318,7 @@ def eboard_handling():
           delay = ndelay
         elif command == 2:
           #start game client black
-          last_move = [131, 64, 64, 64, 64, 254]
+          last_move = [_start_black, 64, 64, 64, 64, 254]
           client_white = False
           host_white = True
           board.reset()
@@ -305,15 +327,30 @@ def eboard_handling():
           ntransmit = 1
           delay = ndelay
         elif command == 3:
-          #start game from this position
-          last_move = [132, 64, 64, 64, 64, 254]
+          #start game from this position, client white
+          last_move = [_start_this_pos, 64, 64, 64, 64, 254]
+          client_white = True
+          host_white = False
           board.set_fen("r1bqkb1r/pppp1ppp/2n2n2/1B2p3/4P3/3P1N2/PPP2PPP/RNBQK2R b KQkq - 0 4")
           board.clear_stack()
           print(board)
           ser.write(last_move)
           ntransmit = 1
           delay = ndelay
+        elif command == 4:
+          #start game from this position, client black
+          last_move = [_start_this_pos, 64, 64, 64, 64, 254]
+          client_white = False
+          host_white = True
+          board.set_fen("r1bqkb1r/pppp1ppp/2n2n2/1B2p3/4P3/3P1N2/PPP2PPP/RNBQK2R b KQkq - 0 4")
+          board.clear_stack()
+          print(board)
+          ser.write(last_move)
+          ntransmit = 1
+          delay = ndelay
+
       elif wait_to_play or wait_to_update:
+        #print("info: wait to play or wait to update")
         if client_req == OK_TO_PLAY:
           #print("info, client ready to play")
           last_move = [65, 64, 64, 64, 64, 254]
@@ -379,8 +416,8 @@ def eboard_handling():
              alt1 = (client_prev_from == last_move[1]) and (client_prev_to == last_move[2])
              alt1 = alt1 and (client_from == last_move[3]) and (client_to == last_move[4])
              alt2 = (client_from == last_move[1]) and (client_to == last_move[2])
-             print("info: alt1 = ", alt1)
-             print("info: alt2 = ", alt2)
+             #print("info: alt1 = ", alt1)
+             #print("info: alt2 = ", alt2)
 
              if (not alt1) and (not alt2):
               print("error on client move data!")
@@ -392,18 +429,18 @@ def eboard_handling():
       elif board_capture:
         #request board status1
         if client_req == REQ_STAT1:
-          print("client request board stat1")
+          #print("client request board stat1")
           #host wait client to request board status 1
-          last_move[0] = 137
+          last_move[0] = _wait_board2
           transmit_board_stat1()
           ntransmit = 1
           delay = ndelay
         #wait request board status2
       elif wait_stat2:
         if client_req == REQ_STAT2:
-          print("client request board stat2")
+          #print("client request board stat2")
           #host in wait to play state, which is wait client to acknowledge ready to play
-          last_move[0] = 140
+          last_move[0] = _wait_update
           transmit_board_stat2()
           ntransmit = 1
           delay = ndelay
@@ -418,7 +455,8 @@ print("select options:")
 print("0 quit")
 print("1 play white")
 print("2 play black")
-print("3 play some position")
+print("3 some position, play white")
+print("4 some position, play back")
 command = int(input())
 
 while not (command == 0):
@@ -436,7 +474,8 @@ while not (command == 0):
   print("0 quit")
   print("1 play white")
   print("2 play black")
-  print("3 play some position")
+  print("3 some position, play white")
+  print("4 some position, play black")
   command = int(input())
 
     
