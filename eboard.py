@@ -3,7 +3,7 @@ import chess.polyglot
 import serial
 import time
 
-ser = serial.Serial('COM16', baudrate=9600)
+ser = serial.Serial('COM5', baudrate=9600)
 book = chess.polyglot.open_reader("opening/performance.bin")
 board = chess.Board()
 print(board)
@@ -13,7 +13,7 @@ engine.configure(pilih)
 play_game = True
 command = 1
 select_new_game = True
-last_move = [129, 64, 64, 64, 64, 254]
+last_move = [129, 136, 136, 136, 136, 254]
 ntransmit = 0
 max_transmit = 3
 ndelay = 5
@@ -21,19 +21,60 @@ delay = ndelay
 client_white =  True
 host_white = False
 device_err = False
-iter = 0
 client_req = 0
 client_prev_from = 0
 cleint_prev_to = 0
 client_from = 0
 client_to = 0
 
-def to_eboard(petak):
-  file = petak & 7
-  rank = petak & 56
-  rank = 56 - rank
-  square = rank + file
-  return square
+#eboard vis-light
+eboard_piece = {'p': 17, 'n': 18 , 'b': 27, 'r': 28, 'q': 29, 'k': 22, 'P': 33, 'N': 34, 'B': 43, 'R': 44, 'Q': 45, 'K': 38} 
+
+def to_eboard(square):
+  return square ^ 56
+
+def to_hostboard(square):
+  return square ^ 56
+
+def eboard_ep(ep_square):
+  if ep_square:
+    return ep_square & 7
+  else:
+    #code enpassant not valid
+    return 15
+
+def eboard_color(color):
+  if color:
+    return 32
+  else:
+    return 16
+
+#eboard vis-micromax
+#eboard_piece = {'p' : 18, 'n' : 19, 'b' : 21 , 'r' : 22, 'q' : 23, 'k' : 20, 'P' : 9, 'N' : 11, 'B' : 13, 'R' : 14, 'Q' : 15, 'K': 12}
+
+#def to_eboard(square):
+#  square = square ^ 56
+#  square = square + (square & 56)
+#  return square
+
+#def to_hostboard(square):
+#  square = square + (square & 7)
+#  square = square >> 1
+#  square = square ^ 56
+#  return square
+
+#def eboard_ep(ep_square):
+# if ep_square:
+#    return to_eboard(ep_square)
+#  else:
+    #code enpassant not valid
+#    return 128
+  
+#def eboard_color(color):
+#  if color:
+#    return 8
+#  else:
+#    return 16
 
 #host and client command
 #0 - 63 move from, move to
@@ -50,50 +91,48 @@ def to_eboard(petak):
 #+ 32 offer draw
 
 # host command
-#128 - ilegal move
+#ilegal move
 _ilegal_move = 128
-#129 - select new game
+#select new game
 _select_ng = 129
-#130 - start game client white
+#start game client white
 _start_white = 130
-#131 - start game client black
+#start game client black
 _start_black = 131
-#132 - start game from this position
+#start game from this position
 _start_this_pos = 132
 #transmit board status1
 _tx_board1 = 135
-#137 -wait for status 2
+#wait for status 2
 _wait_board2 = 137
-#139 transmit board status2
+#transmit board status2
 _tx_board2 = 139
-#140 wait_to_update
+#wait_to_update
 _wait_update = 141
 
 #client_request
-#134 - request board status1
+#request board status1
 REQ_STAT1 = 134
-#136 - request board status2
+#request board status2
 REQ_STAT2 = 136
-#138 - ready to play game
+#ready to play game
 OK_TO_PLAY = 138
-#137 - ready to start game
+#ready to start game
 READY_TO_START = 140
 
-
-
-vis = {'p': 17, 'n': 18 , 'b': 27, 'r': 28, 'q': 29, 'k': 22, 'P': 33, 'N': 34, 'B': 43, 'R': 44, 'Q': 45, 'K': 38} 
-
+          
 def capture1(data):
   for i in range(56, 24, -8):
     for j in range(0, 8):
       idx = i + j
       piece = board.piece_at(idx)
       if piece:
-        num = vis[piece.symbol()]
+        num = eboard_piece[piece.symbol()]
       else:
         num = 0
       data.append(num)
-  
+
+  #end of data
   data.append(254)
 
 def capture2(data):
@@ -102,41 +141,36 @@ def capture2(data):
       idx = i + j
       piece = board.piece_at(idx)
       if piece:
-        num = vis[piece.symbol()]
+        num = eboard_piece[piece.symbol()]
       else:
         num = 0
         
       data.append(num)
 
-  enpass = board.ep_square
-  if enpass:
-    enpass = enpass & 7
-  else:
-    enpass = 15
-        
+  num = board.ep_square
+  num = eboard_ep(num)
+  data.append(num)
+    
+  cast = 0
   if board.has_kingside_castling_rights(True):
-    enpass = enpass | 16
+    cast = cast | 16
   if board.has_queenside_castling_rights(True):
-    enpass = enpass | 32
+    cast = cast | 32
   if board.has_kingside_castling_rights(False):
-    enpass = enpass | 64
+    cast = cast | 64
   if board.has_queenside_castling_rights(False):
-    enpass = enpass | 128
+    cast = cast | 128
 
-  data.append(enpass)
+  data.append(cast)
   data.append(board.halfmove_clock)
-  
-  if board.turn:
-    num = 32
-  else:
-    num = 16
+
+  num = eboard_color(board.turn)
   data.append(num)
 
-  if client_white:
-    num = 32
-  else:
-    num = 16
+  num = eboard_color(client_white)
   data.append(num)
+
+  #end of data
   data.append(254)
 
 def transmit_board_stat1():
@@ -303,12 +337,12 @@ def eboard_handling():
       #print("info, host command", host_cmd)
       if game_ovr:
         if client_req == READY_TO_START:
-          last_move = [_select_ng, 64, 64, 64, 64, 254]
+          last_move = [_select_ng, 136, 136, 136, 136, 254]
       elif select_new_game:
         #print("info command = ", command)
         if command == 1:
           #start game client white
-          last_move = [_start_white, 64, 64, 64, 64, 254]
+          last_move = [_start_white, 136, 136, 136, 136, 254]
           client_white = True
           host_white = False
           board.reset()
@@ -318,7 +352,7 @@ def eboard_handling():
           delay = ndelay
         elif command == 2:
           #start game client black
-          last_move = [_start_black, 64, 64, 64, 64, 254]
+          last_move = [_start_black, 136, 136, 136, 136, 254]
           client_white = False
           host_white = True
           board.reset()
@@ -328,7 +362,7 @@ def eboard_handling():
           delay = ndelay
         elif command == 3:
           #start game from this position, client white
-          last_move = [_start_this_pos, 64, 64, 64, 64, 254]
+          last_move = [_start_this_pos, 136, 136, 136, 136, 254]
           client_white = True
           host_white = False
           board.set_fen("r1bqkb1r/pppp1ppp/2n2n2/1B2p3/4P3/3P1N2/PPP2PPP/RNBQK2R b KQkq - 0 4")
@@ -339,7 +373,7 @@ def eboard_handling():
           delay = ndelay
         elif command == 4:
           #start game from this position, client black
-          last_move = [_start_this_pos, 64, 64, 64, 64, 254]
+          last_move = [_start_this_pos, 136, 136, 136, 136, 254]
           client_white = False
           host_white = True
           board.set_fen("r1bqkb1r/pppp1ppp/2n2n2/1B2p3/4P3/3P1N2/PPP2PPP/RNBQK2R b KQkq - 0 4")
@@ -353,7 +387,7 @@ def eboard_handling():
         #print("info: wait to play or wait to update")
         if client_req == OK_TO_PLAY:
           #print("info, client ready to play")
-          last_move = [65, 64, 64, 64, 64, 254]
+          last_move = [65, 136, 136, 136, 136, 254]
           #check game status
           gstat = game_status()
           last_move[0] = last_move[0] + gstat
@@ -371,8 +405,8 @@ def eboard_handling():
             last_move[1] = last_move[3]
             last_move[2] = last_move[4]
             #game over, no move
-            last_move[3] = 64
-            last_move[4] = 64
+            last_move[3] = 136
+            last_move[4] = 136
             last_move[5] = 254
           else:
             move_from, move_to, promotion = engine_run()
@@ -392,11 +426,13 @@ def eboard_handling():
             #print("info, first ntransmit = ", ntransmit)
             delay = ndelay
         elif client_turn:
+          #print("this client turn")
+          #print("last move in client turn", last_move)
           if (client_prev_from == last_move[3]) and (client_prev_to == last_move[4]):
-            if  not (client_from == 64):
+            if  not (client_from == 136):
               #client has moved
-              move_from = to_eboard(client_from)
-              move_to = to_eboard(client_to)
+              move_from = to_hostboard(client_from)
+              move_to = to_hostboard(client_to)
               legal_move = do_move(move_from, move_to, client_req)
               if not legal_move:
                 #ilegal move
