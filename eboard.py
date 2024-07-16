@@ -23,7 +23,7 @@ host_white = False
 device_err = False
 client_req = 0
 client_prev_from = 0
-cleint_prev_to = 0
+client_prev_to = 0
 client_from = 0
 client_to = 0
 
